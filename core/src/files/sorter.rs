@@ -1,4 +1,4 @@
-use std::{cmp::Ordering, collections::BTreeMap, mem, ops::Deref};
+use std::{cmp::Ordering, collections::BTreeMap, mem};
 
 use config::{manager::SortBy, MANAGER};
 use shared::Url;
@@ -79,9 +79,9 @@ impl FilesSorter {
 			}
 
 			let ordering = if self.sensitive {
-				natord::compare(&entities[a].0, &entities[b].0)
+				Self::natural_compare(&entities[a].0, &entities[b].0, true)
 			} else {
-				natord::compare_ignore_case(&entities[a].0, &entities[b].0)
+				Self::natural_compare(&entities[a].0, &entities[b].0, false)
 			};
 
 			if self.reverse { ordering.reverse() } else { ordering }
@@ -101,6 +101,22 @@ impl FilesSorter {
 			new.push(mem::replace(&mut items[i], dummy.clone()));
 		}
 		*items = new;
+	}
+
+	fn natural_compare(left: &str, right: &str, sensitive: bool) -> Ordering {
+		let skip = |&c: &char| {
+			c.is_whitespace() || c.is_control() || matches!(c, '\u{200B}'..='\u{200D}') || c == '\u{FEFF}'
+		};
+		let cmp = |&l: &char, &r: &char| l.cmp(&r);
+		let to_digit = |&c: &char| c.to_digit(10).map(|v| v as isize);
+
+		if sensitive {
+			natord::compare_iter(left.chars(), right.chars(), skip, cmp, to_digit)
+		} else {
+			let left_iter = left.chars().flat_map(|c| c.to_lowercase());
+			let right_iter = right.chars().flat_map(|c| c.to_lowercase());
+			natord::compare_iter(left_iter, right_iter, skip, cmp, to_digit)
+		}
 	}
 
 	#[inline]
